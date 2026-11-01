@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Bot, User, Loader2, BookOpen, AlertTriangle, Ticket, RotateCcw } from 'lucide-react';
 import { supportApi } from '../api/support';
+import { useAuth } from '../context/AuthContext';
 
 interface Message {
   id: number | string;
@@ -21,6 +22,7 @@ const welcomeMessage: Message = {
 
 export default function AIAssistant() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [input, setInput] = useState('');
@@ -100,10 +102,15 @@ export default function AIAssistant() {
     try {
       const subject =
         pendingQuestion.current.slice(0, 80) || 'Escalated from AI assistant';
+      const custName = user?.first_name
+        ? `${user.first_name} ${user.last_name || ''}`.trim()
+        : user?.username || 'Customer';
+
       const ticket = await supportApi.createTicket({
         subject,
-        customer_name: 'Customer (AI chat)',
-        description: `Escalated from AI assistant.\n\nLast question: ${pendingQuestion.current}`,
+        customer_name: custName,
+        customer_email: user?.email || '',
+        description: `Escalated from AI assistant.\n\nCustomer question: ${pendingQuestion.current}`,
         priority: 'medium',
         conversation_id: conversationId,
       });

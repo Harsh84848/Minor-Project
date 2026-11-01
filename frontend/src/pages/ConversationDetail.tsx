@@ -1,42 +1,59 @@
 import { useParams, Link } from 'react-router-dom';
-import { Bot, User, ArrowLeft, Ticket, CheckCircle, Send } from 'lucide-react';
-import { useState } from 'react';
-
-export interface Message {
-  id: number;
-  sender: 'customer' | 'ai' | 'agent';
-  content: string;
-  timestamp: string;
-}
-
-const demoConversation: {
-  id: number;
-  customerName: string;
-  customerEmail: string;
-  status: 'resolved' | 'open' | 'pending';
-  createdAt: string;
-  messages: Message[];
-} = {
-  id: 1,
-  customerName: 'Rahul Sharma',
-  customerEmail: 'rahul@example.com',
-  status: 'resolved',
-  createdAt: 'Today, 10:15 AM',
-  messages: [
-    { id: 1, sender: 'customer', content: 'Hi, I received my order yesterday but the product was damaged during shipping. Can I get a refund?', timestamp: '10:15 AM' },
-    { id: 2, sender: 'ai', content: 'I\'m sorry to hear about the damaged product, Rahul. Based on our Refund Policy, you\'re eligible for a full refund within 30 days of purchase. Here\'s how to proceed:\n\n1. Go to your Order History\n2. Select the damaged order\n3. Click "Request Refund"\n4. Upload photos of the damaged product\n\nYour refund will be processed within 5-7 business days.', timestamp: '10:15 AM' },
-    { id: 3, sender: 'customer', content: 'Thanks! Can I get a replacement instead of a refund?', timestamp: '10:18 AM' },
-    { id: 4, sender: 'ai', content: 'Yes, absolutely! You can choose either a replacement or a refund. For a replacement:\n\n1. Follow the same steps as above\n2. Select "Request Replacement" instead of "Request Refund"\n3. A new item will be shipped within 2-3 business days\n\nFree return shipping will be arranged for the damaged item.', timestamp: '10:18 AM' },
-    { id: 5, sender: 'customer', content: 'Perfect, I\'ll go with the replacement. Thanks for the quick help!', timestamp: '10:20 AM' },
-    { id: 6, sender: 'ai', content: 'You\'re welcome, Rahul! I\'ve noted your preference for a replacement. Once you submit the request through your order history, our fulfillment team will process it right away. Is there anything else I can help you with?', timestamp: '10:20 AM' },
-  ],
-};
+import { Bot, User, ArrowLeft, Ticket, CheckCircle, Send, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { supportApi, type ConversationItem } from '../api/support';
 
 export default function ConversationDetail() {
   const { id } = useParams();
+  const [conversation, setConversation] = useState<ConversationItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [replyText, setReplyText] = useState('');
-  const conv = demoConversation; // In real app, fetch by id
-  console.log('Loading conversation:', id);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    supportApi
+      .getConversation(id)
+      .then((data) => setConversation(data))
+      .catch(() => setError('Conversation not found.'))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const handleSendReply = async () => {
+    if (!id || !replyText.trim() || sending) return;
+    setSending(true);
+    try {
+      const updated = await supportApi.replyConversation(id, replyText.trim());
+      setConversation(updated);
+      setReplyText('');
+    } catch {
+      setError('Could not send reply.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-16 gap-2 text-surface-400">
+        <Loader2 className="w-5 h-5 animate-spin text-primary-400" />
+        <span>Loading conversation...</span>
+      </div>
+    );
+  }
+
+  if (error || !conversation) {
+    return (
+      <div className="p-8 text-center space-y-4">
+        <p className="text-red-400 text-sm">{error || 'Conversation not found.'}</p>
+        <Link to="/conversations" className="btn btn-secondary btn-sm">
+          <ArrowLeft className="w-4 h-4" /> Back to Conversations
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -47,71 +64,112 @@ export default function ConversationDetail() {
         </Link>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-white">{conv.customerName}</h2>
-            <span className="badge badge-success">
-              <CheckCircle className="w-3 h-3" />
-              Resolved
+            <h2 className="text-xl font-bold text-white">{conversation.customer_name}</h2>
+            <span
+              className={`badge ${
+                conversation.status === 'resolved'
+                  ? 'badge-success'
+                  : conversation.status === 'escalated'
+                  ? 'badge-warning'
+                  : 'badge-primary'
+              }`}
+            >
+              {conversation.status === 'resolved' && <CheckCircle className="w-3 h-3" />}
+              {conversation.status === 'escalated' && <AlertTriangle className="w-3 h-3" />}
+              <span className="capitalize">{conversation.status}</span>
             </span>
           </div>
-          <p className="text-sm text-surface-500">{conv.customerEmail} &middot; Started {conv.createdAt}</p>
+          <p className="text-xs text-surface-500 mt-0.5">
+            Conversation #{conversation.id} &bull; Updated{' '}
+            {new Date(conversation.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
         </div>
-        <Link to="/tickets" className="btn btn-secondary btn-sm">
+        <Link
+          to={`/tickets`}
+          state={{ conversationId: conversation.id, customerName: conversation.customer_name }}
+          className="btn btn-secondary btn-sm"
+        >
           <Ticket className="w-4 h-4" />
           Create Ticket
         </Link>
       </div>
 
-      {/* Messages */}
-      <div className="rounded-2xl glass p-6">
-        <div className="space-y-6">
-          {conv.messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-3 ${msg.sender === 'customer' ? '' : ''}`}>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                msg.sender === 'ai' ? 'bg-primary-500/10 border border-primary-500/20' :
-                msg.sender === 'agent' ? 'bg-blue-500/10 border border-blue-500/20' :
-                'bg-surface-700'
-              }`}>
-                {msg.sender === 'ai' ? (
-                  <Bot className="w-4 h-4 text-primary-400" />
-                ) : msg.sender === 'agent' ? (
-                  <User className="w-4 h-4 text-blue-400" />
-                ) : (
-                  <User className="w-4 h-4 text-surface-300" />
-                )}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-white">
-                    {msg.sender === 'ai' ? 'AI Assistant' : msg.sender === 'agent' ? 'Support Agent' : conv.customerName}
-                  </span>
-                  <span className="text-xs text-surface-600">{msg.timestamp}</span>
+      {/* Messages Thread */}
+      <div className="rounded-2xl glass p-6 space-y-4 min-h-[400px] flex flex-col justify-between">
+        <div className="space-y-4 overflow-y-auto max-h-[500px] pr-2">
+          {(!conversation.messages || conversation.messages.length === 0) ? (
+            <p className="text-xs text-surface-500 text-center py-8">No messages recorded in this conversation.</p>
+          ) : (
+            conversation.messages.map((msg) => {
+              const isUser = msg.sender === 'user';
+              const isAI = msg.sender === 'ai';
+              const isSystem = msg.sender === 'system';
+
+              if (isSystem) {
+                return (
+                  <div key={msg.id} className="text-center my-3">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <AlertTriangle className="w-3 h-3" />
+                      {msg.content}
+                    </span>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isUser
+                        ? 'bg-primary-500/20 text-primary-300'
+                        : isAI
+                        ? 'bg-purple-500/20 text-purple-300'
+                        : 'bg-blue-500/20 text-blue-300'
+                    }`}
+                  >
+                    {isUser ? <User className="w-4 h-4" /> : isAI ? <Bot className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                  </div>
+
+                  <div
+                    className={`max-w-[75%] rounded-2xl p-4 text-sm ${
+                      isUser
+                        ? 'bg-primary-600 text-white rounded-tr-none'
+                        : 'bg-surface-800 text-surface-200 border border-white/5 rounded-tl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <div className="flex items-center justify-between gap-3 text-[10px] text-surface-400 mt-2">
+                      <span className="capitalize">{msg.sender}</span>
+                      {msg.confidence != null && (
+                        <span>Confidence: {Math.round(msg.confidence * 100)}%</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className={`px-4 py-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.sender === 'customer'
-                    ? 'bg-white/[0.03] border border-white/[0.06] text-surface-300'
-                    : msg.sender === 'ai'
-                    ? 'bg-primary-500/[0.06] border border-primary-500/10 text-surface-200'
-                    : 'bg-blue-500/[0.06] border border-blue-500/10 text-surface-200'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
 
         {/* Reply Box */}
-        <div className="mt-6 pt-4 border-t border-white/5">
-          <div className="flex items-center gap-3">
+        <div className="border-t border-white/5 pt-4">
+          <div className="flex gap-2">
             <input
-              type="text"
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
-              placeholder="Type a reply as support agent..."
+              onKeyDown={(e) => e.key === 'Enter' && handleSendReply()}
+              placeholder="Type an agent reply to this customer..."
               className="input flex-1"
             />
-            <button className="btn btn-primary px-4 py-3">
-              <Send className="w-5 h-5" />
+            <button
+              onClick={handleSendReply}
+              disabled={sending || !replyText.trim()}
+              className="btn btn-primary px-4"
+            >
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
         </div>

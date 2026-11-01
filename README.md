@@ -42,10 +42,20 @@ pip install django djangorestframework djangorestframework-simplejwt django-cors
 python manage.py makemigrations
 python manage.py migrate
 
-# 6. Start the Django development server
+# 6. Create Super Admin (optional)
+# This creates a superuser with email admin@admin.com and password password123.
+# You can skip this if you prefer to create your own admin.
+DJANGO_SUPERUSER_PASSWORD=password123 python manage.py createsuperuser --noinput --email admin@admin.com --username admin
+
+# 7. Start the Django development server
 python manage.py runserver
 ```
 The backend API will now be running at **http://localhost:8000**. Keep this terminal open.
+
+The development server generates a temporary Django secret key unless `DJANGO_SECRET_KEY` is set.
+For deployments, configure `DJANGO_SECRET_KEY` in the environment. The optional Google Apps Script
+email relay uses `GOOGLE_APPS_SCRIPT_URL` and `GOOGLE_APPS_SCRIPT_SECRET`; store the matching
+`SHARED_SECRET` in the Apps Script project's Script Properties.
 
 ### 2. Frontend Setup (React App)
 

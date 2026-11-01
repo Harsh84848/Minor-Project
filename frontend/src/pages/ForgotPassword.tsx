@@ -1,20 +1,28 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, ArrowRight, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import api from '../api/axios';
 import { SupportrootLogo } from '../components/branding/SupportrootLogo';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError('');
+    try {
+      await api.post('/auth/forgot-password/', { email });
       setSent(true);
-    }, 1200);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to send reset link. Please check the email.');
+      // Even on failure in development, show sent if wanted or keep error clear
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

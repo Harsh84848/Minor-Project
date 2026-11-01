@@ -1,13 +1,47 @@
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import KnowledgeArticleViewSet, ConversationViewSet, ChatView, TicketViewSet
+
+from .views import (
+    KnowledgeArticleViewSet,
+    ConversationViewSet,
+    ChatView,
+    TicketViewSet,
+    DashboardView,
+    AnalyticsView,
+)
 
 router = DefaultRouter()
-router.register(r'articles', KnowledgeArticleViewSet, basename='articles')
-router.register(r'conversations', ConversationViewSet, basename='conversations')
-router.register(r'tickets', TicketViewSet, basename='tickets')
+
+# Knowledge base APIs
+router.register(
+    r"articles",
+    KnowledgeArticleViewSet,
+    basename="articles",
+)
+
+# Conversation history and starting conversations
+router.register(
+    r"conversations",
+    ConversationViewSet,
+    basename="conversations",
+)
+
+# Support ticket management
+router.register(
+    r"tickets",
+    TicketViewSet,
+    basename="tickets",
+)
 
 urlpatterns = [
-    path('chat/', ChatView.as_view(), name='chat'),
-    path('', include(router.urls)),
+    # AI support chat
+    path("chat/", ChatView.as_view(), name="chat"),
+
+    # Aggregated Dashboard & Analytics metrics
+    path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("analytics/", AnalyticsView.as_view(), name="analytics"),
+
+    # All router-based endpoints
+    path("", include(router.urls)),
 ]

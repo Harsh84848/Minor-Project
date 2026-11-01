@@ -18,22 +18,40 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    workspace_name = serializers.CharField(write_only=True, required=False)
+    workspace_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
         fields = ['email', 'username', 'password', 'first_name', 'last_name', 'workspace_name']
+        extra_kwargs = {
+            'username': {'required': False, 'allow_blank': True},
+        }
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        if User.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return normalized
+
+    def validate(self, attrs):
+        if not attrs.get('username'):
+            attrs['username'] = attrs.get('email', '')
+        return attrs
 
     def create(self, validated_data):
-        workspace_name = validated_data.pop('workspace_name', 'Default Workspace')
+        raw_workspace = validated_data.pop('workspace_name', None) or 'Default Workspace'
+        workspace_name = raw_workspace.strip() or 'Default Workspace'
         workspace, created = Workspace.objects.get_or_create(name=workspace_name)
 
+        email = validated_data['email'].strip().lower()
+        username = validated_data.get('username') or email
+
         user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
+            username=username,
+            email=email,
             password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
+            first_name=validated_data.get('first_name', '').strip(),
+            last_name=validated_data.get('last_name', '').strip(),
             workspace=workspace
         )
 
@@ -55,4 +73,12 @@ class RegisterSerializer(serializers.ModelSerializer):
                         'source_url': item.get('source_url', ''),
                     },
                 )
+
+        # Trigger welcome email via Google Apps Script email relay
+        try:
+            from core.email_service import send_welcome_email
+            send_welcome_email(user.email, user.first_name, workspace.name)
+        except Exception:
+            pass
+
         return user

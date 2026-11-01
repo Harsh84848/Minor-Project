@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Upload,
   FileText,
@@ -12,6 +12,7 @@ import {
   File,
   X,
   Loader2,
+  FileUp,
 } from 'lucide-react';
 import { supportApi, type KnowledgeArticle } from '../api/support';
 
@@ -38,6 +39,9 @@ export default function KnowledgeBase() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<globalThis.File | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -81,24 +85,47 @@ export default function KnowledgeBase() {
     }
   };
 
-  const handleUploadDemo = async () => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const f = e.target.files[0];
+      setSelectedFile(f);
+      if (!title) {
+        setTitle(f.name);
+      }
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedFile && !title.trim() && !content.trim()) return;
     setUploading(true);
+    setError('');
     try {
-      const article = await supportApi.createArticle({
-        title: title.trim() || 'New Document.pdf',
-        content:
-          content.trim() ||
-          'Demo uploaded document content about refunds, shipping, and support policies for customer questions.',
-        source_type: 'pdf',
-        size_label: '1.2 MB',
-        pages: 6,
-      });
-      setDocuments((prev) => [article, ...prev]);
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        if (title.trim()) {
+          formData.append('title', title.trim());
+        }
+        const isPdf = selectedFile.name.toLowerCase().endsWith('.pdf');
+        formData.append('source_type', isPdf ? 'pdf' : 'text');
+        const article = await supportApi.uploadArticleFile(formData);
+        setDocuments((prev) => [article, ...prev]);
+      } else {
+        const article = await supportApi.createArticle({
+          title: title.trim() || 'New Document.pdf',
+          content: content.trim() || 'General policy guidelines and customer documentation.',
+          source_type: 'pdf',
+          size_label: '1.2 MB',
+          pages: 4,
+        });
+        setDocuments((prev) => [article, ...prev]);
+      }
       setShowUploadModal(false);
+      setSelectedFile(null);
       setTitle('');
       setContent('');
-    } catch {
-      setError('Upload failed.');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Upload failed. Ensure backend server is active.');
     } finally {
       setUploading(false);
     }
@@ -107,6 +134,7 @@ export default function KnowledgeBase() {
   const handleAddWebsite = async () => {
     if (!websiteUrl.trim()) return;
     setUploading(true);
+    setError('');
     try {
       let hostname = websiteUrl.trim();
       try {
@@ -118,10 +146,9 @@ export default function KnowledgeBase() {
       }
       const article = await supportApi.createArticle({
         title: hostname,
-        content: `Website content crawled from ${websiteUrl}. Support hours, contact channels, and product FAQs.`,
+        content: `Website content from ${websiteUrl}.`,
         source_type: 'website',
         source_url: websiteUrl,
-        size_label: 'pages',
       });
       setDocuments((prev) => [article, ...prev]);
       setShowUrlModal(false);
@@ -191,122 +218,84 @@ export default function KnowledgeBase() {
       </div>
 
       {error && (
-        <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-300">
-          {error}
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-300">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">{documents.length}</p>
-              <p className="text-xs text-surface-500">Total Documents</p>
-            </div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {documents.filter((d) => d.status === 'processed').length}
-              </p>
-              <p className="text-xs text-surface-500">Processed</p>
-            </div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {documents.filter((d) => d.status === 'processing').length}
-              </p>
-              <p className="text-xs text-surface-500">Processing</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
+      {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
         <input
-          type="text"
-          placeholder="Search documents..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="input input-with-icon"
+          placeholder="Search knowledge articles..."
+          className="input pl-10"
         />
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-surface-400 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          Loading knowledge base...
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredDocs.map((doc) => (
+      {/* Document List */}
+      <div className="space-y-3">
+        {loading ? (
+          <div className="flex items-center justify-center p-12 text-surface-400 gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-primary-400" />
+            <span>Loading knowledge articles...</span>
+          </div>
+        ) : filteredDocs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center">
+            <p className="text-surface-400 text-sm">No articles found.</p>
+            <p className="text-surface-500 text-xs mt-1">
+              Add your policies, FAQ guides, or website URLs above to train the AI.
+            </p>
+          </div>
+        ) : (
+          filteredDocs.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center gap-4 p-4 rounded-xl glass glass-hover transition-all duration-200"
+              className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-surface-850/60 hover:bg-surface-800/80 transition-colors gap-4"
             >
-              <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                {getTypeIcon(doc.source_type)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{doc.title}</p>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="text-xs text-surface-500">{doc.size_label || '—'}</span>
-                  {doc.pages != null && (
-                    <span className="text-xs text-surface-500">{doc.pages} pages</span>
-                  )}
-                  <span className="text-xs text-surface-500">{relativeTime(doc.created_at)}</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
+                  {getTypeIcon(doc.source_type)}
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-white truncate">{doc.title}</h4>
+                  <div className="flex items-center gap-2 text-xs text-surface-500 mt-0.5">
+                    <span className="capitalize">{doc.source_type}</span>
+                    <span>&bull;</span>
+                    <span>{doc.size_label || (doc.pages ? `${doc.pages} pages` : '1 KB')}</span>
+                    <span>&bull;</span>
+                    <span>{relativeTime(doc.created_at)}</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {getStatusIcon(doc.status)}
-                <span
-                  className={`text-xs font-medium capitalize ${
-                    doc.status === 'processed'
-                      ? 'text-emerald-400'
-                      : doc.status === 'processing'
-                        ? 'text-primary-400'
-                        : 'text-red-400'
-                  }`}
-                >
-                  {doc.status}
-                </span>
-              </div>
-              <button
-                onClick={() => handleDelete(doc.id)}
-                className="p-2 rounded-lg hover:bg-red-500/10 text-surface-500 hover:text-red-400 transition-colors flex-shrink-0"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-          {filteredDocs.length === 0 && (
-            <div className="text-center py-16 text-surface-500 text-sm">
-              No documents yet. Add an article to power the AI assistant.
-            </div>
-          )}
-        </div>
-      )}
 
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="flex items-center gap-1.5 text-xs text-surface-400">
+                  {getStatusIcon(doc.status)}
+                  <span className="capitalize">{doc.status}</span>
+                </div>
+                <button
+                  onClick={() => handleDelete(doc.id)}
+                  className="p-1.5 rounded-lg hover:bg-white/5 text-surface-400 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Text Modal */}
       {showTextModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl bg-surface-850 border border-white/10 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-white">Add Text Article</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Add Knowledge Article</h3>
               <button
                 onClick={() => setShowTextModal(false)}
                 className="p-1 rounded-lg hover:bg-white/5 text-surface-400"
@@ -352,49 +341,112 @@ export default function KnowledgeBase() {
         </div>
       )}
 
+      {/* Real Document Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl bg-surface-850 border border-white/10 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-white">Upload Document</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Upload Document (PDF / Text)</h3>
               <button
-                onClick={() => setShowUploadModal(false)}
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setSelectedFile(null);
+                }}
                 className="p-1 rounded-lg hover:bg-white/5 text-surface-400"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-xs text-surface-500 mb-4">
-              Demo mode: enter a title and optional text (simulates PDF upload).
+
+            <p className="text-xs text-surface-400 mb-4">
+              Upload PDF manuals, product documentation, or text files. The backend will parse text and make it searchable by the AI assistant.
             </p>
-            <div className="space-y-4">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Document name (e.g. Product Guide.pdf)"
-                className="input"
-              />
-              <textarea
-                rows={4}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Optional extracted text..."
-                className="input resize-none"
-              />
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,.md,.doc,.docx"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {/* File dropzone / selector */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-white/10 hover:border-primary-500/50 rounded-xl p-6 text-center cursor-pointer transition-colors bg-white/[0.02] hover:bg-primary-500/[0.03] mb-4"
+            >
+              <FileUp className="w-8 h-8 text-primary-400 mx-auto mb-2" />
+              {selectedFile ? (
+                <div>
+                  <p className="text-sm font-semibold text-white">{selectedFile.name}</p>
+                  <p className="text-xs text-primary-400 mt-1">
+                    {(selectedFile.size / 1024).toFixed(1)} KB &bull; Click to change file
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm font-medium text-surface-300">
+                    Click to browse or drop file here
+                  </p>
+                  <p className="text-xs text-surface-500 mt-1">Supports PDF, TXT, MD up to 25MB</p>
+                </div>
+              )}
             </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-surface-400 mb-1">
+                  Document Title (optional)
+                </label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={selectedFile ? selectedFile.name : 'e.g. User Guide.pdf'}
+                  className="input text-sm"
+                />
+              </div>
+
+              {!selectedFile && (
+                <div>
+                  <label className="block text-xs font-medium text-surface-400 mb-1">
+                    Or paste text content directly
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Enter document text content..."
+                    className="input resize-none text-sm"
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowUploadModal(false)} className="btn btn-secondary btn-sm">
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setSelectedFile(null);
+                }}
+                className="btn btn-secondary btn-sm"
+              >
                 Cancel
               </button>
-              <button onClick={handleUploadDemo} disabled={uploading} className="btn btn-primary btn-sm">
+              <button
+                onClick={handleUploadDocument}
+                disabled={uploading || (!selectedFile && !title.trim() && !content.trim())}
+                className="btn btn-primary btn-sm"
+              >
                 {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                Upload
+                Upload & Process
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Website Modal */}
       {showUrlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl bg-surface-850 border border-white/10 p-6">
@@ -415,12 +467,12 @@ export default function KnowledgeBase() {
                   type="url"
                   value={websiteUrl}
                   onChange={(e) => setWebsiteUrl(e.target.value)}
-                  placeholder="https://yourcompany.com"
-                  className="input input-with-icon"
+                  placeholder="https://docs.yourcompany.com"
+                  className="input pl-10"
                 />
               </div>
               <p className="text-xs text-surface-500 mt-2">
-                Demo mode: we store the URL and placeholder crawl content for the AI.
+                The backend will automatically crawl the website content with BeautifulSoup and index it for your AI assistant.
               </p>
             </div>
             <div className="flex justify-end gap-3 mt-6">
